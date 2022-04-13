@@ -57,8 +57,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
 ggsave("plots/Cleaning_BeforeDropNA.png")
 
 data <- data %>% 
-  drop_na(mileage) %>% 
-  select(-X)
+  drop_na(mileage) 
 
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) %>% 
