@@ -49,7 +49,8 @@ data <- data %>%
 
 data%>% 
   ggplot(aes(x = price)) +
-  geom_histogram(bins = 80) 
+  geom_histogram(bins = 80) +
+  geom_vline(xintercept = max(data$price))
 ```
 
 
