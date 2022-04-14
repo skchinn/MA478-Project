@@ -43,7 +43,7 @@ data %>%
   shave() %>% 
   rplot() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-ggsave("plots/corrplot.png")
+#ggsave("plots/corrplot.png")
 ```
 Variables that we would expect to be related show high levels of correlation.  Because our purposes are prediction (rather than inference), we can mostly ignore these relationships so long as the related variables improve our model performance.
 
@@ -58,7 +58,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
   theme_minimal() +
   geom_label(aes(label = x), nudge_x = -.25) +
   ggtitle("Missing Value Counts")
-ggsave("plots/Cleaning_BeforeDropNA.png")
+#ggsave("plots/Cleaning_BeforeDropNA.png")
 ```
 We do not wish to include observations that do not have data for `mileage` as these are likely incomplete listings, or listings that were not scraped correctly.
 
@@ -74,7 +74,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
   theme_minimal() +
   geom_label(aes(label = x), nudge_x = -1) +
   ggtitle("Missing Value Counts After Dropping Listings With Missing Mileage")
-ggsave("plots/Cleaning_AfterDropNA.png")
+#ggsave("plots/Cleaning_AfterDropNA.png")
 ```
 However, even after removing these entries, there are still well over 7 thousand observations with at least one missing value.  To do this, we will use the `mice` package to perform multiple impuitation using regression.
 
@@ -109,7 +109,7 @@ exploraory %>%
   theme_minimal() +
   labs(title = "Price vs. Certified Pre-Owned",
        x = "", y = "Price($)", fill = "Is CPO")
-ggsave("plots/EDA_Price_CPO.png")
+#ggsave("plots/EDA_Price_CPO.png")
 
 exploraory %>% 
   ggplot(aes(x = mileage, y = price, color = is_cpo)) +
@@ -119,7 +119,7 @@ exploraory %>%
   labs(title = "Price vs. Milage", 
        x = "Milage", y = "Price ($)", 
        color = "Is CPO")
-ggsave("plots/EDA_Milage_Price.png")
+#ggsave("plots/EDA_Milage_Price.png")
 
 exploraory %>% 
   filter(owner_count <= 8) %>% 
@@ -131,7 +131,7 @@ exploraory %>%
   labs(title = "Price vs. Owner Count", 
        x = "Number of Previous Owners", y = "Price ($)", 
        fill = "Is CPO")
-ggsave("plots/EDA_NumOwners_Price.png")
+#ggsave("plots/EDA_NumOwners_Price.png")
 ```
 
 ```{r}
