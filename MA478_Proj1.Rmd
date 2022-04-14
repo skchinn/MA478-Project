@@ -322,6 +322,6 @@ lm_AIC <- stepAIC(baseline)
 
 Model output
 ```{r}
-summary(lm_AIC)
+summary(lm_AIC) 
 ```
 
