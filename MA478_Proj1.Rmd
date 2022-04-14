@@ -161,6 +161,7 @@ lasso_recipe <- recipe(price ~ ., data = other_data) %>%
 summary(lasso_recipe)
 ```
 
+### LASSO Regression
 Add the LASSO to the workflow
 ```{r workflow}
 lasso1 <- linear_reg(penalty = 0.1, mixture = 1) %>% # mixture = 1 -> lasso
@@ -170,44 +171,61 @@ workflow <- workflow() %>%
   add_recipe(lasso_recipe)
 ```
 
-Untuned LASSO
+#### Untuned LASSO
 ```{r}
 lasso1_fit <- workflow %>% 
   add_model(lasso1) %>% 
   fit(data = other_data)
 
 lasso1_fit %>% 
-  pull_workflow_fit() %>% 
+  extract_fit_parsnip() %>% 
   tidy()
+
+lasso1_preds <- lasso1_fit %>% 
+  augment(new_data = other_data)
+
+lasso1_rsq <- rsq(lasso1_preds, price, .pred)$.estimate
 ```
 
-### Tuning $\lambda$ for LASSO
+#### Tuning $\lambda$ for LASSO
 
 List of $\lambda$ values to test in CV
 ```{r penalty tuning LASSO}
 lasso_2 <- linear_reg(penalty = tune(), mixture = 1) %>% 
   set_engine("glmnet")
 
-workflow <- workflow %>% 
-  replace_model(lasso_2)
+lambda_grid <- grid_regular(penalty(), levels = 100)
+lambda_grid <- tibble(penalty = 10^seq(-4, 0, length.out = 40))
 
-penalties <- tibble(penalty = 10^seq(-4, -1, length.out = 40))
+data_boot <- bootstraps(other_data)
 
-results <- workflow %>% 
+doParallel::registerDoParallel()
+
+lasso_grid <- tune_grid(
+  workflow %>% 
+    add_model(lasso_2),
+  resamples = data_boot,
+  grid = lambda_grid)
+
+lasso_grid <- workflow %>% add_model(lasso_2) %>% 
   tune_grid(val_data,
-            grid = penalties,
+            grid = lambda_grid,
             control = control_grid(save_pred = T, save_workflow = T),
-            metrics = metric_set(mae))
+            metrics = metric_set(rsq))
+
+lasso_grid %>% 
+  collect_metrics()
 ```
 
 $\lambda$ selection
 ```{r Penalty tuning LASSO results}
-results %>% 
+lasso_grid %>% 
   collect_metrics() %>% 
+  dplyr::filter(.metric == "rsq") %>% 
   ggplot(aes(x = penalty, y = mean)) +
   geom_point() +
   geom_line() +
-  ylab("Root Mean Square Error") +
+  ylab("Explained Variance") +
   scale_x_log10(labels = scales::label_number()) + 
   ggtitle("Tuning Lasso Penalty") +
   theme_minimal() + theme_bw()
@@ -215,30 +233,13 @@ results %>%
 ```
 
 ```{r Select Best Penalty LASSO}
-results %>% 
-  show_best("roc_auc", n = 15) %>% 
+lasso_grid %>% 
+  show_best("rsq", n = 15) %>% 
   arrange(-mean, penalty)
 
 lr_best <- results %>% 
   collect_metrics() %>% 
   arrange(-mean) %>% 
   slice(1)
-```
-
-### LASSO Regression
-```{r Fit LASSO w Penalty}
-glm1_tuned <- logistic_reg(penalty = lr_best$penalty, mixture = 1) %>% # mixture = 1 -> lasso
-  set_engine("glmnet")
-
-fit_glm1 <- workflow() %>% 
-  add_model(glm1_tuned) %>% 
-  add_recipe(glm1_recipe) %>% 
-  fit(data = other_data) 
-
-fit_glm1 %>% 
-  extract_fit_parsnip() %>% 
-  tidy() %>% 
-  filter(estimate > 0) %>%
-  dplyr::select(`Term` = term, `Estimate` = estimate) -> lasso_res
 ```
 
