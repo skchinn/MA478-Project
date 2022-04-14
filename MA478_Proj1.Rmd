@@ -28,13 +28,14 @@ data <- data %>%
          front_legroom = extract_numeric(front_legroom),
          fuel_tank_volume = extract_numeric(fuel_tank_volume),
          length = extract_numeric(length),
-         power = str_split(power, " ", simplify = T)[1,1],
-         torque = str_split(torque, " ", simplify = T)[1,1],
-         wheelbase = extract_numeric(wheelbase))
+         wheelbase = extract_numeric(wheelbase),
+         power = as.numeric(gsub(".*?([0-9]+).*", "\\1", power)),
+         torque = as.numeric(gsub(".*?([0-9]+).*", "\\1", torque)))
 end <- Sys.time()
 
 print(end-start)
 ```
+
 ### Exploratory Data Analysis
 ```{r}
 data %>% 
@@ -76,13 +77,13 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
   ggtitle("Missing Value Counts After Dropping Listings With Missing Mileage")
 #ggsave("plots/Cleaning_AfterDropNA.png")
 ```
-However, even after removing these entries, there are still well over 7 thousand observations with at least one missing value.  To do this, we will use the `mice` package to perform multiple impuitation using regression.
+However, even after removing these entries, there are still well over 7 thousand observations with at least one missing value.  To do this, we will use the `mice` package to perform multiple imputation using regression.
 
 ```{r}
 library(mice)
 
 start <- Sys.time()
-imp <- mice(data, method = "cart", m = 3)
+imp <- mice(data, method = "cart", m = 1)
 data <- complete(imp)
 end <- Sys.time()
 print(end-start)
@@ -134,7 +135,110 @@ exploraory %>%
 #ggsave("plots/EDA_NumOwners_Price.png")
 ```
 
-```{r}
+### Train and Test Split/Pre-Process Data
 
+Training and Validation Data
+```{r Train Test}
+set.seed(222)
+# Put 3/4 of the data into the training set 
+data_split <- initial_split(data, prop = 3/4)
+
+# Create data frames for the two sets:
+other_data <- training(data_split)
+test_data  <- testing(data_split)
+
+val_data <- validation_split(other_data, 
+                             prop = 0.7)
+```
+
+Create Recipe for LASSO and Random Forest
+```{r glm1_recipe}
+lasso_recipe <- recipe(price ~ ., data = other_data) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors() - all_nominal())
+
+summary(lasso_recipe)
+```
+
+Add the LASSO to the workflow
+```{r workflow}
+lasso1 <- linear_reg(penalty = 0.1, mixture = 1) %>% # mixture = 1 -> lasso
+  set_engine("glmnet")
+
+workflow <- workflow() %>% 
+  add_recipe(lasso_recipe)
+```
+
+Untuned LASSO
+```{r}
+lasso1_fit <- workflow %>% 
+  add_model(lasso1) %>% 
+  fit(data = other_data)
+
+lasso1_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy()
+```
+
+### Tuning $\lambda$ for LASSO
+
+List of $\lambda$ values to test in CV
+```{r penalty tuning LASSO}
+lasso_2 <- linear_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet")
+
+workflow <- workflow %>% 
+  replace_model(lasso_2)
+
+penalties <- tibble(penalty = 10^seq(-4, -1, length.out = 40))
+
+results <- workflow %>% 
+  tune_grid(val_data,
+            grid = penalties,
+            control = control_grid(save_pred = T, save_workflow = T),
+            metrics = metric_set(mae))
+```
+
+$\lambda$ selection
+```{r Penalty tuning LASSO results}
+results %>% 
+  collect_metrics() %>% 
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  ylab("Root Mean Square Error") +
+  scale_x_log10(labels = scales::label_number()) + 
+  ggtitle("Tuning Lasso Penalty") +
+  theme_minimal() + theme_bw()
+#ggsave("images/lasso_tuning.png")
+```
+
+```{r Select Best Penalty LASSO}
+results %>% 
+  show_best("roc_auc", n = 15) %>% 
+  arrange(-mean, penalty)
+
+lr_best <- results %>% 
+  collect_metrics() %>% 
+  arrange(-mean) %>% 
+  slice(1)
+```
+
+### LASSO Regression
+```{r Fit LASSO w Penalty}
+glm1_tuned <- logistic_reg(penalty = lr_best$penalty, mixture = 1) %>% # mixture = 1 -> lasso
+  set_engine("glmnet")
+
+fit_glm1 <- workflow() %>% 
+  add_model(glm1_tuned) %>% 
+  add_recipe(glm1_recipe) %>% 
+  fit(data = other_data) 
+
+fit_glm1 %>% 
+  extract_fit_parsnip() %>% 
+  tidy() %>% 
+  filter(estimate > 0) %>%
+  dplyr::select(`Term` = term, `Estimate` = estimate) -> lasso_res
 ```
 
