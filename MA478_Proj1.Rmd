@@ -1,0 +1,140 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r cache=TRUE}
+#setwd("C:/Users/Robey/Desktop/MA478 Proj/MA478-Project")
+
+library(dplyr)
+library(ggplot2)
+library(tidymodels)
+library(stringr)
+library(corrr)
+
+start <- Sys.time()
+data <- read.csv(file = "subset_used_cars_data.csv", stringsAsFactors = TRUE)
+data <- data %>% 
+  select(-c(X, vin, bed, city, dealer_zip, engine_type, bed_height, bed_length, 
+            cabin, combine_fuel_economy, fleet, height, is_certified, 
+            main_picture_url, vehicle_damage_category, width, description, 
+            sp_name, sp_id, trimId, trim_name, wheel_system_display, listed_date, 
+            exterior_color, interior_color, model_name, listing_id, sp_id, 
+            major_options, make_name, franchise_make, )) %>% 
+  mutate(back_legroom = extract_numeric(back_legroom),
+         engine_cylinders = extract_numeric(engine_cylinders),
+         front_legroom = extract_numeric(front_legroom),
+         fuel_tank_volume = extract_numeric(fuel_tank_volume),
+         length = extract_numeric(length),
+         power = str_split(power, " ", simplify = T)[1,1],
+         torque = str_split(torque, " ", simplify = T)[1,1],
+         wheelbase = extract_numeric(wheelbase))
+end <- Sys.time()
+
+print(end-start)
+```
+### Exploratory Data Analysis
+```{r}
+data %>% 
+  correlate() %>% 
+  rearrange() %>% 
+  shave() %>% 
+  rplot() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave("plots/corrplot.png")
+```
+Variables that we would expect to be related show high levels of correlation.  Because our purposes are prediction (rather than inference), we can mostly ignore these relationships so long as the related variables improve our model performance.
+
+
+#### Dealing with NA Values
+```{r}
+sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
+  filter(x > 0) %>% 
+  ggplot(aes(y = names, x = x)) +
+  geom_histogram(stat = "identity", alpha = 0.6) +
+  scale_x_log10("Number of Missing Values") +
+  theme_minimal() +
+  geom_label(aes(label = x), nudge_x = -.25) +
+  ggtitle("Missing Value Counts")
+ggsave("plots/Cleaning_BeforeDropNA.png")
+```
+We do not wish to include observations that do not have data for `mileage` as these are likely incomplete listings, or listings that were not scraped correctly.
+
+```{r}
+data <- data %>% 
+  drop_na(mileage) 
+
+sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
+  filter(x > 0) %>% 
+  ggplot(aes(y = names, x = x)) +
+  geom_histogram(stat = "identity", alpha = 0.6) +
+  scale_x_continuous("Number of Missing Values") +
+  theme_minimal() +
+  geom_label(aes(label = x), nudge_x = -1) +
+  ggtitle("Missing Value Counts After Dropping Listings With Missing Mileage")
+ggsave("plots/Cleaning_AfterDropNA.png")
+```
+However, even after removing these entries, there are still well over 7 thousand observations with at least one missing value.  To do this, we will use the `mice` package to perform multiple impuitation using regression.
+
+```{r}
+library(mice)
+
+start <- Sys.time()
+imp <- mice(data, method = "cart", m = 3)
+data <- complete(imp)
+end <- Sys.time()
+print(end-start)
+
+data %>% write.csv("imputed_subset_used_cars.csv")
+```
+
+```{r}
+sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
+  filter(x > 0) 
+```
+
+
+
+```{r}
+exploraory <- data %>% 
+  sample_n(round(nrow(data)*0.25))
+
+exploraory %>% 
+  ggplot(aes(y = price, x = is_cpo, fill = is_cpo)) + 
+  scale_y_log10() +
+  geom_boxplot() + 
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Price vs. Certified Pre-Owned",
+       x = "", y = "Price($)", fill = "Is CPO")
+ggsave("plots/EDA_Price_CPO.png")
+
+exploraory %>% 
+  ggplot(aes(x = mileage, y = price, color = is_cpo)) +
+  geom_point(alpha = 0.3) +
+  theme_minimal() +
+  scale_y_log10() +
+  labs(title = "Price vs. Milage", 
+       x = "Milage", y = "Price ($)", 
+       color = "Is CPO")
+ggsave("plots/EDA_Milage_Price.png")
+
+exploraory %>% 
+  filter(owner_count <= 8) %>% 
+  group_by(owner_count) %>% 
+  ggplot(aes(x = owner_count, y = price, group = owner_count)) +
+  geom_boxplot(alpha = 0.6) +
+  theme_minimal() +
+  scale_y_log10() +
+  labs(title = "Price vs. Owner Count", 
+       x = "Number of Previous Owners", y = "Price ($)", 
+       fill = "Is CPO")
+ggsave("plots/EDA_NumOwners_Price.png")
+```
+
+```{r}
+
+```
+
