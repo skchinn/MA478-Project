@@ -272,6 +272,7 @@ test<-data[-data1,]
 
 ```{r}
 # Using leaps package to create best subset on the training data
+set.seed(1234)
 Best_Subset <- regsubsets(price ~ .,
                           data = train,
                           nbest = 1,
@@ -293,10 +294,10 @@ baseline <- lm(price ~ ., data = train)
 summary(baseline)
 
 # removing some observations with new factor levels
-test1 <- test %>% filter(listing_color != "PINK",
-                         transmission_display != "2-Speed Automatic")
-test <- test %>% filter(listing_color != "PINK",
-                         transmission_display != "2-Speed Automatic")
+test1 <- test %>% filter(maximum_seating != "--",
+                         transmission_display != "8-Speed CVT")
+test <- test %>% filter(maximum_seating != "--",
+                         transmission_display != "8-Speed CVT")
 
 # getting predictions
 preds <- predict(baseline, test1)
@@ -307,11 +308,20 @@ error <- preds %>% cbind(test$price) %>%
   mutate(diff = test$price - preds)
 ```
 
-
+Osho's attempt at an intuitive model, it wasn't good
 ```{r}
-#oshos attempt at a model, it wasnt good
 lm1 <- lm(price ~ year + mileage + has_accidents + transmission + city_fuel_economy + body_type, data = train)
 
 summary(lm1)
+```
+Step AIC Feature Selection on the Baseline model
+```{r}
+library(MASS)
+lm_AIC <- stepAIC(baseline)
+```
+
+Model output
+```{r}
+summary(lm_AIC)
 ```
 
