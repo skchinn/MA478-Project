@@ -13,6 +13,7 @@ library(ggplot2)
 library(tidymodels)
 library(stringr)
 library(corrr)
+library(leaps)
 
 start <- Sys.time()
 data <- read.csv(file = "subset_used_cars_data.csv", stringsAsFactors = TRUE)
@@ -258,5 +259,59 @@ lr_best <- results %>%
   collect_metrics() %>% 
   arrange(-mean) %>% 
   slice(1)
+```
+
+### Linear Regression - basic stuff :)
+```{r lin reg test train split}
+data1 = sort(sample(nrow(data), nrow(data)*.6))
+#creating training data set by selecting the output row values
+train<-data[data1,]
+#creating test data set by not selecting the output row values
+test<-data[-data1,]
+```
+
+```{r}
+# Using leaps package to create best subset on the training data
+Best_Subset <- regsubsets(price ~ .,
+                          data = train,
+                          nbest = 1,
+                          nvmax = NULL,
+                          force.in = NULL,
+                          force.out = NULL,
+                          method = "backward")
+
+summary_best_subset <- summary(Best_Subset)
+
+# find which one is the best subset
+which.max(summary_best_subset$adjr2)
+
+# print the variables we need
+summary_best_subset$which[69,]
+
+# basic linear regression on all variables
+baseline <- lm(price ~ ., data = train)
+summary(baseline)
+
+# removing some observations with new factor levels
+test1 <- test %>% filter(listing_color != "PINK",
+                         transmission_display != "2-Speed Automatic")
+test <- test %>% filter(listing_color != "PINK",
+                         transmission_display != "2-Speed Automatic")
+
+# getting predictions
+preds <- predict(baseline, test1)
+preds <- as.data.frame(preds)
+
+# calculating error df
+error <- preds %>% cbind(test$price) %>%
+  mutate(diff = test$price - preds)
+```
+
+
+```{r}
+#oshos attempt at a model, it wasnt good
+lm1 <- lm(price ~ year + mileage + has_accidents + transmission + city_fuel_economy + body_type, data = train)
+
+summary(lm1)
 ```
 
