@@ -39,6 +39,22 @@ print(end-start)
 ### Exploratory Data Analysis
 ```{r}
 data %>% 
+  ggplot(aes(x = price)) +
+  geom_histogram(bins = 80) +
+  geom_vline(xintercept = max(data$price))
+```
+```{r}
+data <- data %>% 
+  filter(price <= mean(price) + 3*sd(price)) 
+
+data%>% 
+  ggplot(aes(x = price)) +
+  geom_histogram(bins = 80) 
+```
+
+
+```{r}
+data %>% 
   correlate() %>% 
   rearrange() %>% 
   shave() %>% 
