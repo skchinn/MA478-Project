@@ -131,6 +131,15 @@ data <- read.csv("imputed_subset_used_cars.csv") %>%
   dplyr::select(-X)
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) 
+
+data <- data %>% 
+  mutate(frame_damaged = as.factor(frame_damaged),
+         franchise_dealer = as.factor(franchise_dealer),
+         has_accidents = as.factor(has_accidents),
+         is_new = as.factor(is_new),
+         is_oemcpo = as.factor(is_oemcpo),
+         salvage = as.factor(salvage),
+         theft_title = as.factor(theft_title))
 ```
 
 
@@ -191,8 +200,8 @@ Create Recipe for LASSO
 ```{r recipe}
 recipe <- recipe(price ~ ., data = other_data) %>% 
   step_dummy(all_nominal_predictors()) %>% 
-  step_zv(all_numeric(), - all_outcomes()) %>% 
-  step_normalize(all_numeric() - all_outcomes())
+  step_zv(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors())
 
 summary(recipe)
 ```
@@ -382,12 +391,8 @@ baseline <- lm(price ~ ., data = train)
 summary(baseline)
 
 # removing some observations with new factor levels
-test1 <- test %>% filter(listing_color != "PINK", 
-                         transmission_display != "1-Speed CVT",
-                         transmission_display != "4-Speed CVT")
-test <- test %>% filter(listing_color != "PINK", 
-                         transmission_display != "1-Speed CVT",
-                         transmission_display != "4-Speed CVT")
+test1 <- test %>% filter(transmission_display != "8-Speed CVT")
+test <- test %>% filter(transmission_display != "8-Speed CVT")
 
 # getting predictions
 preds <- predict(baseline, test1)
