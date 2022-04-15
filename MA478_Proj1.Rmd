@@ -5,7 +5,7 @@ editor_options:
   chunk_output_type: inline
 ---
 
-```{r cache=TRUE}
+```{r read and filter data, cache=TRUE}
 #setwd("C:/Users/Robey/Desktop/MA478 Proj/MA478-Project")
 
 library(dplyr)
@@ -23,7 +23,7 @@ data <- data %>%
             main_picture_url, vehicle_damage_category, width, description, 
             sp_name, sp_id, trimId, trim_name, wheel_system_display, listed_date, 
             exterior_color, interior_color, model_name, listing_id, sp_id, 
-            major_options, make_name, franchise_make, )) %>% 
+            major_options, make_name, franchise_make, horsepower)) %>% 
   mutate(back_legroom = extract_numeric(back_legroom),
          engine_cylinders = extract_numeric(engine_cylinders),
          front_legroom = extract_numeric(front_legroom),
@@ -38,13 +38,13 @@ print(end-start)
 ```
 
 ### Exploratory Data Analysis
-```{r}
+```{r initial price distribution}
 data %>% 
   ggplot(aes(x = price)) +
   geom_histogram(bins = 80) +
   geom_vline(xintercept = max(data$price))
 ```
-```{r}
+```{r removing price outliers}
 data <- data %>% 
   filter(price <= mean(price) + 3*sd(price)) 
 
@@ -55,7 +55,7 @@ data%>%
 ```
 
 
-```{r}
+```{r covariance plot}
 data %>% 
   correlate() %>% 
   rearrange() %>% 
@@ -68,7 +68,7 @@ Variables that we would expect to be related show high levels of correlation.  B
 
 
 #### Dealing with NA Values
-```{r}
+```{r initial NA counts}
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) %>% 
   ggplot(aes(y = names, x = x)) +
@@ -81,7 +81,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
 ```
 We do not wish to include observations that do not have data for `mileage` as these are likely incomplete listings, or listings that were not scraped correctly.
 
-```{r}
+```{r }
 data <- data %>% 
   drop_na(mileage) 
 
@@ -101,7 +101,7 @@ However, even after removing these entries, there are still well over 7 thousand
 library(mice)
 
 start <- Sys.time()
-imp <- mice(data, method = "cart", m = 1)
+imp <- mice(data, method = "cart", m = 3)
 data <- complete(imp)
 end <- Sys.time()
 print(end-start)
@@ -169,14 +169,14 @@ val_data <- validation_split(other_data,
                              prop = 0.7)
 ```
 
-Create Recipe for LASSO and Random Forest
-```{r glm1_recipe}
-lasso_recipe <- recipe(price ~ ., data = other_data) %>% 
+Create Recipe for LASSO 
+```{r recipe}
+recipe <- recipe(price ~ ., data = other_data) %>% 
   step_dummy(all_nominal(), -all_outcomes()) %>% 
   step_zv(all_predictors()) %>% 
   step_normalize(all_predictors() - all_nominal())
 
-summary(lasso_recipe)
+summary(recipe)
 ```
 
 ### LASSO Regression
@@ -186,7 +186,7 @@ lasso1 <- linear_reg(penalty = 0.1, mixture = 1) %>% # mixture = 1 -> lasso
   set_engine("glmnet")
 
 workflow <- workflow() %>% 
-  add_recipe(lasso_recipe)
+  add_recipe(recipe)
 ```
 
 #### Untuned LASSO
@@ -255,7 +255,77 @@ lasso_grid %>%
   show_best("rsq", n = 15) %>% 
   arrange(-mean, penalty)
 
-lr_best <- results %>% 
+lr_best <- lasso_grid %>% 
+  collect_metrics() %>% 
+  arrange(-mean) %>% 
+  slice(1)
+```
+
+### RIDGE Regression
+Add the RIDGE to the workflow
+```{r untrained ridge}
+ridge1 <- linear_reg(penalty = 0.1, mixture = 0) %>% # mixture = 1 -> lasso
+  set_engine("glmnet")
+```
+
+#### Untuned LASSO
+```{r}
+ridge1_fit <- workflow %>% 
+  add_model(ridge1) %>% 
+  fit(data = other_data)
+
+ridge1_fit %>% 
+  extract_fit_parsnip() %>% 
+  tidy()
+
+ridge1_preds <- ridge1_fit %>% 
+  augment(new_data = other_data)
+
+ridge1_rsq <- rsq(ridge1_preds, price, .pred)$.estimate
+```
+
+#### Tuning $\lambda$ for RIDGE
+
+List of $\lambda$ values to test in CV
+```{r penalty tuning RIDGE}
+ridge_2 <- linear_reg(penalty = tune(), mixture = 0) %>% 
+  set_engine("glmnet")
+
+ridge_grid <- tibble(penalty = 10^seq(-4, 0, length.out = 40))
+
+doParallel::registerDoParallel()
+
+ridge_grid <- workflow %>% add_model(ridge_2) %>% 
+  tune_grid(val_data,
+            grid = ridge_grid,
+            control = control_grid(save_pred = T, save_workflow = T),
+            metrics = metric_set(rsq))
+
+ridge_grid %>% 
+  collect_metrics()
+```
+
+$\lambda$ selection
+```{r Penalty tuning RIDGE results}
+ridge_grid %>% 
+  collect_metrics() %>% 
+  dplyr::filter(.metric == "rsq") %>% 
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  ylab("Explained Variance") +
+  scale_x_log10(labels = scales::label_number()) + 
+  ggtitle("Tuning Ridge Penalty") +
+  theme_minimal() + theme_bw()
+#ggsave("images/lasso_tuning.png")
+```
+
+```{r Select Best Penalty RIDGE}
+ridge_grid %>% 
+  show_best("rsq", n = 15) %>% 
+  arrange(-mean, penalty)
+
+ridge_best <- ridge_grid %>% 
   collect_metrics() %>% 
   arrange(-mean) %>% 
   slice(1)
@@ -270,7 +340,7 @@ train<-data[data1,]
 test<-data[-data1,]
 ```
 
-```{r}
+```{r initial feature selection for simple lm}
 # Using leaps package to create best subset on the training data
 set.seed(1234)
 Best_Subset <- regsubsets(price ~ .,
@@ -309,19 +379,19 @@ error <- preds %>% cbind(test$price) %>%
 ```
 
 Osho's attempt at an intuitive model, it wasn't good
-```{r}
+```{r osho intuitive model}
 lm1 <- lm(price ~ year + mileage + has_accidents + transmission + city_fuel_economy + body_type, data = train)
 
 summary(lm1)
 ```
 Step AIC Feature Selection on the Baseline model
-```{r}
+```{r stepAIC}
 library(MASS)
 lm_AIC <- stepAIC(baseline)
 ```
 
 Model output
-```{r}
+```{r step AIC results}
 summary(lm_AIC) 
 ```
 
