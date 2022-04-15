@@ -23,7 +23,8 @@ data <- data %>%
             main_picture_url, vehicle_damage_category, width, description, 
             sp_name, sp_id, trimId, trim_name, wheel_system_display, listed_date, 
             exterior_color, interior_color, model_name, listing_id, sp_id, 
-            major_options, make_name, franchise_make, horsepower)) %>% 
+            major_options, make_name, franchise_make, horsepower, isCab, is_cpo,
+            transmission)) %>% 
   mutate(back_legroom = extract_numeric(back_legroom),
          engine_cylinders = extract_numeric(engine_cylinders),
          front_legroom = extract_numeric(front_legroom),
@@ -31,7 +32,10 @@ data <- data %>%
          length = extract_numeric(length),
          wheelbase = extract_numeric(wheelbase),
          power = as.numeric(gsub(".*?([0-9]+).*", "\\1", power)),
-         torque = as.numeric(gsub(".*?([0-9]+).*", "\\1", torque)))
+         torque = as.numeric(gsub(".*?([0-9]+).*", "\\1", torque))) %>% 
+  mutate_all(easyr::tobool) %>% 
+  mutate(is_oemcpo = ifelse(is.na(is_oemcpo), F, T)) %>% 
+  mutate_all(na_if,"")
 end <- Sys.time()
 
 print(end-start)
@@ -86,7 +90,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
   geom_histogram(stat = "identity", alpha = 0.6) +
   scale_x_log10("Number of Missing Values") +
   theme_minimal() +
-  geom_label(aes(label = x), nudge_x = -.25) +
+  geom_label(aes(label = x), nudge_x = 0) +
   ggtitle("Missing Value Counts")
 #ggsave("plots/Cleaning_BeforeDropNA.png")
 ```
@@ -95,6 +99,8 @@ We do not wish to include observations that do not have data for `mileage` as th
 ```{r }
 data <- data %>% 
   drop_na(mileage) 
+data <- data %>% 
+  drop_na(price) 
 
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) %>% 
@@ -112,7 +118,7 @@ However, even after removing these entries, there are still well over 7 thousand
 library(mice)
 
 start <- Sys.time()
-imp <- mice(data, method = "cart", m = 3)
+imp <- mice(data, method = "rf", m = 1)
 data <- complete(imp)
 end <- Sys.time()
 print(end-start)
@@ -121,7 +127,8 @@ data %>% write.csv("imputed_subset_used_cars.csv")
 ```
 
 ```{r}
-data <- read.csv("imputed_subset_used_cars.csv")
+data <- read.csv("imputed_subset_used_cars.csv") %>% 
+  dplyr::select(-X)
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) 
 ```
@@ -132,7 +139,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
 exploraory <- data 
 
 exploraory %>% 
-  ggplot(aes(y = price, x = is_cpo, fill = is_cpo)) + 
+  ggplot(aes(y = price, x = is_oemcpo, fill = is_oemcpo)) + 
   scale_y_log10() +
   geom_boxplot() + 
   coord_flip() +
@@ -142,7 +149,7 @@ exploraory %>%
 #ggsave("plots/EDA_Price_CPO.png")
 
 exploraory %>% 
-  ggplot(aes(x = mileage, y = price, color = is_cpo)) +
+  ggplot(aes(x = mileage, y = price, color = is_oemcpo)) +
   geom_point(alpha = 0.3) +
   theme_minimal() +
   scale_y_log10() +
@@ -183,9 +190,9 @@ val_data <- validation_split(other_data,
 Create Recipe for LASSO 
 ```{r recipe}
 recipe <- recipe(price ~ ., data = other_data) %>% 
-  step_dummy(all_nominal(), -all_outcomes()) %>% 
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_predictors() - all_nominal())
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_numeric(), - all_outcomes()) %>% 
+  step_normalize(all_numeric() - all_outcomes())
 
 summary(recipe)
 ```
@@ -375,10 +382,12 @@ baseline <- lm(price ~ ., data = train)
 summary(baseline)
 
 # removing some observations with new factor levels
-test1 <- test %>% filter(maximum_seating != "--",
-                         transmission_display != "8-Speed CVT")
-test <- test %>% filter(maximum_seating != "--",
-                         transmission_display != "8-Speed CVT")
+test1 <- test %>% filter(listing_color != "PINK", 
+                         transmission_display != "1-Speed CVT",
+                         transmission_display != "4-Speed CVT")
+test <- test %>% filter(listing_color != "PINK", 
+                         transmission_display != "1-Speed CVT",
+                         transmission_display != "4-Speed CVT")
 
 # getting predictions
 preds <- predict(baseline, test1)
@@ -391,7 +400,7 @@ error <- preds %>% cbind(test$price) %>%
 
 Osho's attempt at an intuitive model, it wasn't good
 ```{r osho intuitive model}
-lm1 <- lm(price ~ year + mileage + has_accidents + transmission + city_fuel_economy + body_type, data = train)
+lm1 <- lm(price ~ year + mileage + has_accidents + transmission_display + city_fuel_economy + body_type, data = train)
 
 summary(lm1)
 ```
