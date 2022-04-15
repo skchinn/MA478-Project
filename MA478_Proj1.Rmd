@@ -18,7 +18,7 @@ library(leaps)
 start <- Sys.time()
 data <- read.csv(file = "subset_used_cars_data.csv", stringsAsFactors = TRUE)
 data <- data %>% 
-  select(-c(X, vin, bed, city, dealer_zip, engine_type, bed_height, bed_length, 
+  dplyr::select(-c(X, vin, bed, city, dealer_zip, engine_type, bed_height, bed_length, 
             cabin, combine_fuel_economy, fleet, height, is_certified, 
             main_picture_url, vehicle_damage_category, width, description, 
             sp_name, sp_id, trimId, trim_name, wheel_system_display, listed_date, 
@@ -42,8 +42,14 @@ print(end-start)
 data %>% 
   ggplot(aes(x = price)) +
   geom_histogram(bins = 80) +
-  geom_vline(xintercept = max(data$price))
+  geom_vline(xintercept = max(data$price)) +
+  labs(title = "Distribution of Price", 
+       subtitle = "Before Outlier Removal", 
+       x = "Price ($)", 
+       y = "Count") +
+  theme_minimal()
 ```
+
 ```{r removing price outliers}
 data <- data %>% 
   filter(price <= mean(price) + 3*sd(price)) 
@@ -51,7 +57,12 @@ data <- data %>%
 data%>% 
   ggplot(aes(x = price)) +
   geom_histogram(bins = 80) +
-  geom_vline(xintercept = max(data$price))
+  geom_vline(xintercept = max(data$price)) +
+  labs(title = "Distribution of Price", 
+       subtitle = "After Outlier Removal", 
+       x = "Price ($)", 
+       y = "Count") +
+  theme_minimal()
 ```
 
 
@@ -110,6 +121,7 @@ data %>% write.csv("imputed_subset_used_cars.csv")
 ```
 
 ```{r}
+data <- read.csv("imputed_subset_used_cars.csv")
 sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>% 
   filter(x > 0) 
 ```
@@ -117,8 +129,7 @@ sapply(data, function(y) sum(length(which(is.na(y))))) %>% tidy() %>%
 
 
 ```{r}
-exploraory <- data %>% 
-  sample_n(round(nrow(data)*0.25))
+exploraory <- data 
 
 exploraory %>% 
   ggplot(aes(y = price, x = is_cpo, fill = is_cpo)) + 
