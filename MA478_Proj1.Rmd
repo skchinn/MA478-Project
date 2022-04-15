@@ -239,8 +239,8 @@ List of $\lambda$ values to test in CV
 lasso_2 <- linear_reg(penalty = tune(), mixture = 1) %>% 
   set_engine("glmnet")
 
-lambda_grid <- grid_regular(penalty(), levels = 100)
-lambda_grid <- tibble(penalty = 10^seq(-4, 0, length.out = 40))
+#lambda_grid <- grid_regular(penalty(), levels = 100)
+lambda_grid <- tibble(penalty = 10^seq(-2, 2, length.out = 40))
 
 data_boot <- bootstraps(other_data)
 
@@ -252,11 +252,11 @@ lasso_grid <- tune_grid(
   resamples = data_boot,
   grid = lambda_grid)
 
-lasso_grid <- workflow %>% add_model(lasso_2) %>% 
-  tune_grid(val_data,
-            grid = lambda_grid,
-            control = control_grid(save_pred = T, save_workflow = T),
-            metrics = metric_set(rsq))
+#lasso_grid <- workflow %>% add_model(lasso_2) %>% 
+#  tune_grid(val_data,
+#            grid = lambda_grid,
+#            control = control_grid(save_pred = T, save_workflow = T),
+#            metrics = metric_set(rsq))
 
 lasso_grid %>% 
   collect_metrics()
@@ -282,8 +282,9 @@ lasso_grid %>%
   show_best("rsq", n = 15) %>% 
   arrange(-mean, penalty)
 
-lr_best <- lasso_grid %>% 
+lasso_best <- lasso_grid %>% 
   collect_metrics() %>% 
+  filter(.metric == "rsq") %>% 
   arrange(-mean) %>% 
   slice(1)
 ```
@@ -318,15 +319,17 @@ List of $\lambda$ values to test in CV
 ridge_2 <- linear_reg(penalty = tune(), mixture = 0) %>% 
   set_engine("glmnet")
 
-ridge_grid <- tibble(penalty = 10^seq(-4, 0, length.out = 40))
+lambda_grid <- tibble(penalty = 10^seq(-1.5, 4, length.out = 40))
+
+data_boot <- bootstraps(other_data)
 
 doParallel::registerDoParallel()
 
-ridge_grid <- workflow %>% add_model(ridge_2) %>% 
-  tune_grid(val_data,
-            grid = ridge_grid,
-            control = control_grid(save_pred = T, save_workflow = T),
-            metrics = metric_set(rsq))
+ridge_grid <- tune_grid(
+  workflow %>% 
+    add_model(ridge_2),
+  resamples = data_boot,
+  grid = lambda_grid)
 
 ridge_grid %>% 
   collect_metrics()
@@ -354,6 +357,7 @@ ridge_grid %>%
 
 ridge_best <- ridge_grid %>% 
   collect_metrics() %>% 
+  filter(.metric == "rsq") %>% 
   arrange(-mean) %>% 
   slice(1)
 ```
