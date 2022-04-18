@@ -287,6 +287,10 @@ lasso_best <- lasso_grid %>%
   filter(.metric == "rsq") %>% 
   arrange(-mean) %>% 
   slice(1)
+
+lasso_grid %>% 
+  collect_metrics() %>% 
+  filter(`.config` == lasso_best$.config)
 ```
 
 ### RIDGE Regression
@@ -360,6 +364,10 @@ ridge_best <- ridge_grid %>%
   filter(.metric == "rsq") %>% 
   arrange(-mean) %>% 
   slice(1)
+
+ridge_grid %>% 
+  collect_metrics() %>% 
+  filter(`.config` == ridge_best$.config)
 ```
 
 ### Linear Regression - basic stuff :)
