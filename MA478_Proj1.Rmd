@@ -293,6 +293,24 @@ lasso_grid %>%
   filter(`.config` == lasso_best$.config)
 ```
 
+Fitting Tuned LASSO
+```{r tuned LASSO fit and VIP}
+lasso_tuned <- linear_reg(penalty = lasso_best$penalty, mixture = 1) %>% 
+  set_engine("glmnet")
+
+lasso_tuned_fit <- workflow %>% 
+  add_model(lasso_tuned) %>% 
+  fit(data = other_data)
+
+lasso_tuned_fit %>% 
+  extract_fit_parsnip() %>% 
+  vip::vip(num_features = 20, aesthetics = list(alpha = 0.6)) +
+  theme_bw() +
+  labs(title = "Variable Importance Plot", 
+       subtitle = "Lasso Regression")
+```
+
+
 ### RIDGE Regression
 Add the RIDGE to the workflow
 ```{r untrained ridge}
@@ -368,6 +386,23 @@ ridge_best <- ridge_grid %>%
 ridge_grid %>% 
   collect_metrics() %>% 
   filter(`.config` == ridge_best$.config)
+```
+
+Fitting Tuned RIDGE
+```{r tuned RIDGE fit and VIP}
+ridge_tuned <- linear_reg(penalty = ridge_best$penalty, mixture = 0) %>% 
+  set_engine("glmnet")
+
+ridge_tuned_fit <- workflow %>% 
+  add_model(ridge_tuned) %>% 
+  fit(data = other_data)
+
+ridge_tuned_fit %>% 
+  extract_fit_parsnip() %>% 
+  vip::vip(num_features = 20, aesthetics = list(alpha = 0.6)) +
+  theme_bw() +
+  labs(title = "Variable Importance Plot", 
+       subtitle = "Ridge Regression")
 ```
 
 ### Linear Regression - basic stuff :)
